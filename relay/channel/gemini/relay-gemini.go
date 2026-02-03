@@ -1220,8 +1220,12 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	var usage = &dto.Usage{}
 	var imageCount int
 	responseText := strings.Builder{}
+	var rawStreamItems []string // 存储原始流数据用于关键字检测
 
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
+		// 保存原始数据用于失败关键字检测
+		rawStreamItems = append(rawStreamItems, data)
+
 		var geminiResponse dto.GeminiChatResponse
 		err := common.UnmarshalJsonStr(data, &geminiResponse)
 		if err != nil {
@@ -1286,6 +1290,7 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 
 	// 检测失败关键字
 	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		// 首先检查解析后的响应文本
 		if matched, keyword := service.CheckFailureKeywords(responseText.String(), info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
 			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Gemini stream response: %s", keyword))
 			return nil, types.NewOpenAIError(
@@ -1293,6 +1298,17 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 				types.ErrorCodeFailureKeywordDetected,
 				http.StatusServiceUnavailable,
 			)
+		}
+		// 如果解析后的内容没有匹配，再检查原始流数据（处理非标准格式的错误响应）
+		for _, item := range rawStreamItems {
+			if matched, keyword := service.CheckFailureKeywords(item, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in raw Gemini stream data: %s", keyword))
+				return nil, types.NewOpenAIError(
+					fmt.Errorf("failure keyword detected: %s", keyword),
+					types.ErrorCodeFailureKeywordDetected,
+					http.StatusServiceUnavailable,
+				)
+			}
 		}
 	}
 
