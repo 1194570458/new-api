@@ -1284,6 +1284,18 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 	}
 
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		if matched, keyword := service.CheckFailureKeywords(responseText.String(), info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Gemini stream response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	return usage, nil
 }
 
@@ -1386,6 +1398,19 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	if common.DebugEnabled {
 		println(string(responseBody))
 	}
+
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		if matched, keyword := service.CheckFailureKeywords(string(responseBody), info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Gemini response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	var geminiResponse dto.GeminiChatResponse
 	err = common.Unmarshal(responseBody, &geminiResponse)
 	if err != nil {

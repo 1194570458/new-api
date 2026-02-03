@@ -181,6 +181,19 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		logger.LogError(c, "error processing tokens: "+err.Error())
 	}
 
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		responseText := responseTextBuilder.String()
+		if matched, keyword := service.CheckFailureKeywords(responseText, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in stream response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	if !containStreamUsage {
 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
@@ -204,6 +217,19 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if common.DebugEnabled {
 		println("upstream response body:", string(responseBody))
 	}
+
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		if matched, keyword := service.CheckFailureKeywords(string(responseBody), info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	// Unmarshal to simpleResponse
 	if info.ChannelType == constant.ChannelTypeOpenRouter && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 		// 尝试解析为 openrouter enterprise

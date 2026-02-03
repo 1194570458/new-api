@@ -760,6 +760,19 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		return nil, err
 	}
 
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		responseText := claudeInfo.ResponseText.String()
+		if matched, keyword := service.CheckFailureKeywords(responseText, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Claude stream response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	HandleStreamFinalResponse(c, info, claudeInfo, requestMode)
 	return claudeInfo.Usage, nil
 }
@@ -828,6 +841,19 @@ func ClaudeHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 	if common.DebugEnabled {
 		println("responseBody: ", string(responseBody))
 	}
+
+	// 检测失败关键字
+	if len(info.ChannelSetting.FailureKeywords) > 0 {
+		if matched, keyword := service.CheckFailureKeywords(string(responseBody), info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Claude response: %s", keyword))
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("failure keyword detected: %s", keyword),
+				types.ErrorCodeFailureKeywordDetected,
+				http.StatusServiceUnavailable,
+			)
+		}
+	}
+
 	handleErr := HandleClaudeResponseData(c, info, claudeInfo, resp, responseBody, requestMode)
 	if handleErr != nil {
 		return nil, handleErr

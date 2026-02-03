@@ -384,6 +384,8 @@ const EditChannelModal = (props) => {
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
+    failure_keywords: [],
+    failure_keywords_case_sensitive: false,
   });
   const showApiConfigCard = true; // 控制是否显示 API 配置卡片
   const getInitValues = () => ({ ...originInputs });
@@ -682,6 +684,8 @@ const EditChannelModal = (props) => {
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
         system_prompt_override: data.system_prompt_override || false,
+        failure_keywords: data.failure_keywords || [],
+        failure_keywords_case_sensitive: data.failure_keywords_case_sensitive || false,
       });
       initialModelsRef.current = (data.models || [])
         .map((model) => (model || '').trim())
@@ -1027,6 +1031,8 @@ const EditChannelModal = (props) => {
       pass_through_body_enabled: false,
       system_prompt: '',
       system_prompt_override: false,
+      failure_keywords: [],
+      failure_keywords_case_sensitive: false,
     });
     // 重置密钥模式状态
     setKeyMode('append');
@@ -1354,6 +1360,8 @@ const EditChannelModal = (props) => {
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
+      failure_keywords: localInputs.failure_keywords || [],
+      failure_keywords_case_sensitive: localInputs.failure_keywords_case_sensitive || false,
     };
     localInputs.setting = JSON.stringify(channelExtraSettings);
 
@@ -1405,6 +1413,8 @@ const EditChannelModal = (props) => {
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
     delete localInputs.system_prompt_override;
+    delete localInputs.failure_keywords;
+    delete localInputs.failure_keywords_case_sensitive;
     delete localInputs.is_enterprise_account;
     // 顶层的 vertex_key_type 不应发送给后端
     delete localInputs.vertex_key_type;
@@ -3370,6 +3380,34 @@ const EditChannelModal = (props) => {
                       extraText={t(
                         '如果用户请求中包含系统提示词，则使用此设置拼接到用户的系统提示词前面',
                       )}
+                    />
+
+                    <Form.TextArea
+                      field='failure_keywords'
+                      label={t('失败响应体关键字')}
+                      placeholder={t('每行一个关键字')}
+                      onChange={(value) => {
+                        // 将文本按行分割为数组
+                        const keywords = value ? value.split('\n').filter(k => k.trim() !== '') : [];
+                        handleChannelSettingsChange('failure_keywords', keywords);
+                      }}
+                      value={(channelSettings.failure_keywords || []).join('\n')}
+                      autosize
+                      showClear
+                      extraText={t('失败响应体关键字说明')}
+                    />
+                    <Form.Switch
+                      field='failure_keywords_case_sensitive'
+                      label={t('区分大小写')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelSettingsChange(
+                          'failure_keywords_case_sensitive',
+                          value,
+                        )
+                      }
+                      extraText={t('失败关键字匹配时是否区分大小写')}
                     />
                   </Card>
                 </div>
