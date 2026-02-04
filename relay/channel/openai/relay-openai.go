@@ -132,12 +132,12 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	hasFailureKeywords := len(info.ChannelSetting.FailureKeywords) > 0
 
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
-		// 在发送数据前先检测失败关键字
+		// 在发送数据前先检测失败关键字（检测 content 字段）
 		if hasFailureKeywords && !failureKeywordDetected {
-			if matched, keyword := service.CheckFailureKeywords(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			if matched, keyword := service.CheckFailureKeywordsInStreamContent(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
 				failureKeywordDetected = true
 				detectedKeyword = keyword
-				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in stream data (before send): %s", keyword))
+				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in stream content (before send): %s", keyword))
 				// 检测到失败关键字，不发送数据，但继续读取流以便正确关闭连接
 			}
 		}

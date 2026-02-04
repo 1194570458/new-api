@@ -1231,12 +1231,12 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		// 保存原始数据用于失败关键字检测
 		rawStreamItems = append(rawStreamItems, data)
 
-		// 在处理数据前先检测失败关键字
+		// 在处理数据前先检测失败关键字（检测 content 字段）
 		if hasFailureKeywords && !failureKeywordDetected {
-			if matched, keyword := service.CheckFailureKeywords(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+			if matched, keyword := service.CheckFailureKeywordsInGeminiContent(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
 				failureKeywordDetected = true
 				detectedKeyword = keyword
-				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Gemini stream data (before send): %s", keyword))
+				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Gemini stream content (before send): %s", keyword))
 				// 检测到失败关键字，继续读取流以便正确关闭连接，但不发送给客户端
 			}
 		}
