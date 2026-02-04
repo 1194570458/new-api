@@ -122,12 +122,28 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var streamItems []string // store stream items
 	var lastStreamData string
 	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+	var failureKeywordDetected bool
+	var detectedKeyword string
 
 	// 检查是否为音频模型
 	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
 
+	// 检查是否需要检测失败关键字
+	hasFailureKeywords := len(info.ChannelSetting.FailureKeywords) > 0
+
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
-		if lastStreamData != "" {
+		// 在发送数据前先检测失败关键字
+		if hasFailureKeywords && !failureKeywordDetected {
+			if matched, keyword := service.CheckFailureKeywords(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+				failureKeywordDetected = true
+				detectedKeyword = keyword
+				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in stream data (before send): %s", keyword))
+				// 检测到失败关键字，不发送数据，但继续读取流以便正确关闭连接
+			}
+		}
+
+		// 如果已检测到失败关键字，不再发送数据给客户端
+		if !failureKeywordDetected && lastStreamData != "" {
 			err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
 			if err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -144,6 +160,15 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 		return true
 	})
+
+	// 如果在流处理过程中检测到失败关键字，立即返回错误以触发重试
+	if failureKeywordDetected {
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("failure keyword detected: %s", detectedKeyword),
+			types.ErrorCodeFailureKeywordDetected,
+			http.StatusServiceUnavailable,
+		)
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -179,31 +204,6 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	// 处理token计算
 	if err := processTokens(info.RelayMode, streamItems, &responseTextBuilder, &toolCount); err != nil {
 		logger.LogError(c, "error processing tokens: "+err.Error())
-	}
-
-	// 检测失败关键字
-	if len(info.ChannelSetting.FailureKeywords) > 0 {
-		// 首先检查解析后的响应文本
-		responseText := responseTextBuilder.String()
-		if matched, keyword := service.CheckFailureKeywords(responseText, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
-			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in stream response: %s", keyword))
-			return nil, types.NewOpenAIError(
-				fmt.Errorf("failure keyword detected: %s", keyword),
-				types.ErrorCodeFailureKeywordDetected,
-				http.StatusServiceUnavailable,
-			)
-		}
-		// 如果解析后的内容没有匹配，再检查原始流数据（处理非标准格式的错误响应）
-		for _, item := range streamItems {
-			if matched, keyword := service.CheckFailureKeywords(item, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
-				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in raw stream data: %s", keyword))
-				return nil, types.NewOpenAIError(
-					fmt.Errorf("failure keyword detected: %s", keyword),
-					types.ErrorCodeFailureKeywordDetected,
-					http.StatusServiceUnavailable,
-				)
-			}
-		}
 	}
 
 	if !containStreamUsage {

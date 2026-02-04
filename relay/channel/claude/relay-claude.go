@@ -750,9 +750,30 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	}
 	var err *types.NewAPIError
 	var rawStreamItems []string // 存储原始流数据用于关键字检测
+	var failureKeywordDetected bool
+	var detectedKeyword string
+
+	// 检查是否需要检测失败关键字
+	hasFailureKeywords := len(info.ChannelSetting.FailureKeywords) > 0
+
 	helper.StreamScannerHandler(c, resp, info, func(data string) bool {
 		// 保存原始数据用于失败关键字检测
 		rawStreamItems = append(rawStreamItems, data)
+
+		// 在处理数据前先检测失败关键字
+		if hasFailureKeywords && !failureKeywordDetected {
+			if matched, keyword := service.CheckFailureKeywords(data, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
+				failureKeywordDetected = true
+				detectedKeyword = keyword
+				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Claude stream data (before send): %s", keyword))
+				// 检测到失败关键字，继续读取流以便正确关闭连接，但不发送给客户端
+			}
+		}
+
+		// 如果已检测到失败关键字，不处理数据（不发送给客户端）
+		if failureKeywordDetected {
+			return true // 继续读取流
+		}
 
 		err = HandleStreamResponseData(c, info, claudeInfo, data, requestMode)
 		if err != nil {
@@ -764,29 +785,13 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		return nil, err
 	}
 
-	// 检测失败关键字
-	if len(info.ChannelSetting.FailureKeywords) > 0 {
-		// 首先检查解析后的响应文本
-		responseText := claudeInfo.ResponseText.String()
-		if matched, keyword := service.CheckFailureKeywords(responseText, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
-			logger.LogWarn(c, fmt.Sprintf("failure keyword detected in Claude stream response: %s", keyword))
-			return nil, types.NewOpenAIError(
-				fmt.Errorf("failure keyword detected: %s", keyword),
-				types.ErrorCodeFailureKeywordDetected,
-				http.StatusServiceUnavailable,
-			)
-		}
-		// 如果解析后的内容没有匹配，再检查原始流数据（处理非标准格式的错误响应）
-		for _, item := range rawStreamItems {
-			if matched, keyword := service.CheckFailureKeywords(item, info.ChannelSetting.FailureKeywords, info.ChannelSetting.FailureKeywordsCaseSensitive); matched {
-				logger.LogWarn(c, fmt.Sprintf("failure keyword detected in raw Claude stream data: %s", keyword))
-				return nil, types.NewOpenAIError(
-					fmt.Errorf("failure keyword detected: %s", keyword),
-					types.ErrorCodeFailureKeywordDetected,
-					http.StatusServiceUnavailable,
-				)
-			}
-		}
+	// 如果在流处理过程中检测到失败关键字，立即返回错误以触发重试
+	if failureKeywordDetected {
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("failure keyword detected: %s", detectedKeyword),
+			types.ErrorCodeFailureKeywordDetected,
+			http.StatusServiceUnavailable,
+		)
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo, requestMode)
