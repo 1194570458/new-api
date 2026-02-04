@@ -603,7 +603,12 @@ const EditChannelModal = (props) => {
           data.system_prompt = parsedSettings.system_prompt || '';
           data.system_prompt_override =
             parsedSettings.system_prompt_override || false;
-          data.failure_keywords = parsedSettings.failure_keywords || [];
+          // 处理 failure_keywords，确保是数组格式
+          let failureKeywords = parsedSettings.failure_keywords || [];
+          if (typeof failureKeywords === 'string') {
+            failureKeywords = failureKeywords.split(',').map(k => k.trim()).filter(k => k !== '');
+          }
+          data.failure_keywords = Array.isArray(failureKeywords) ? failureKeywords : [];
           data.failure_keywords_case_sensitive =
             parsedSettings.failure_keywords_case_sensitive || false;
         } catch (error) {
