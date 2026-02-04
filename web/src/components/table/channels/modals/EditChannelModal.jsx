@@ -159,6 +159,8 @@ const EditChannelModal = (props) => {
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
+    failure_keywords: [],
+    failure_keywords_case_sensitive: false,
     settings: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
@@ -384,6 +386,7 @@ const EditChannelModal = (props) => {
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
+    system_prompt_override: false,
     failure_keywords: [],
     failure_keywords_case_sensitive: false,
   });
@@ -600,6 +603,9 @@ const EditChannelModal = (props) => {
           data.system_prompt = parsedSettings.system_prompt || '';
           data.system_prompt_override =
             parsedSettings.system_prompt_override || false;
+          data.failure_keywords = parsedSettings.failure_keywords || [];
+          data.failure_keywords_case_sensitive =
+            parsedSettings.failure_keywords_case_sensitive || false;
         } catch (error) {
           console.error('解析渠道设置失败:', error);
           data.force_format = false;
@@ -608,6 +614,8 @@ const EditChannelModal = (props) => {
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
+          data.failure_keywords = [];
+          data.failure_keywords_case_sensitive = false;
         }
       } else {
         data.force_format = false;
@@ -616,6 +624,8 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
+        data.failure_keywords = [];
+        data.failure_keywords_case_sensitive = false;
       }
 
       if (data.settings) {
